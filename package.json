@@ -1,0 +1,9 @@
+{
+  "name": "barelytics",
+  "scripts": {
+    "build": "mkdir -p dist && cp script.js dist/script.js && terser script.js -c drop_console=true,drop_debugger=true -m -o dist/script.min.js"
+  },
+  "devDependencies": {
+    "terser": "^5.44.0"
+  }
+}
