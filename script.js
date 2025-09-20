@@ -93,10 +93,11 @@
   const sessionId = getSessionId();
   const deviceInfo = detectDevice();
 
-  function sendEvent(type, extra = {}) {
+  function sendEvent(type, name) {
     const payload = {
       session_id: sessionId,
       type,
+      name,
       url: window.location.href,
       referrer: document.referrer,
       user_agent: navigator.userAgent,
@@ -104,7 +105,6 @@
       user_id: getUserId(),
       client_id: clientId,
       ...deviceInfo,
-      ...extra,
     };
     navigator.sendBeacon(backendUrl, JSON.stringify(payload));
   }
@@ -126,5 +126,12 @@
   history.replaceState = function (...args) {
     originalReplaceState.apply(this, args);
     setTimeout(() => sendEvent('page_view'), 0);
+  };
+
+  // Expose public API
+  window.barelytics = {
+    capture: function (name) {
+      sendEvent('custom', name);
+    },
   };
 })();
