@@ -1,137 +1,157 @@
-// Auto-initialize when script loads
+// TODO: Fix spa navigation not being tracked
+
 (function initAnalytics() {
-  // Get configuration from script tag data attributes
-  const currentScript = document.currentScript || document.querySelector('script[data-url]');
-  
-  if (!currentScript) {
-    console.error('Barelytics: Could not find script tag with data-url attribute');
-    return;
-  }
-  
-  let backendUrl = currentScript.getAttribute('data-url');
-  const clientId = currentScript.getAttribute('data-id');
-  
-  if (!backendUrl) {
-      backendUrl = 'https://api.barelytics.com/event';
-  }
-  
-  if (!clientId) {
-    console.error('Barelytics: data-id attribute is required');
-    return;
-  }
-  
-  function getSessionId() {
-    const name = 'analytics_session=';
-    const match = document.cookie.split('; ').find((row) => row.startsWith(name));
-    if (match) return match.split('=')[1];
-    const id = crypto.randomUUID();
-    document.cookie = `analytics_session=${id}; path=/; max-age=1800`;
-    return id;
-  }
+    const currentScript = document.currentScript || document.querySelector('script[data-url]');
 
-  function getUserId() {
-    let userId = localStorage.getItem('barelytics_user_id');
-    if (!userId) {
-      userId = crypto.randomUUID();
-      localStorage.setItem('barelytics_user_id', userId);
-    }
-    return userId;
-  }
-
-  function detectDevice() {
-    const userAgent = navigator.userAgent;
-
-    // Device Type Detection
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-    const isTablet =
-      /iPad|Android(?=.*\bMobile\b)(?=.*(?:\bTablet\b|\bSM-T))|KFAPWI|LG-V909|SM-T|GT-P|SCH-I800|Kindle|Silk.*Accelerated|Android.*(?:\bTablet\b|\bSM-T|\bSCH-I800)/i.test(
-        userAgent
-      );
-
-    let deviceType = 'desktop';
-    if (isTablet) {
-      deviceType = 'tablet';
-    } else if (isMobile) {
-      deviceType = 'mobile';
+    if (!currentScript) {
+        console.error('Barelytics: Could not find script tag with data-url');
+        return;
     }
 
-    // OS Detection
-    let device_os = 'unknown';
-    if (/Android/i.test(userAgent)) {
-      device_os = 'android';
-    } else if (/iPhone|iPad|iPod/i.test(userAgent)) {
-      device_os = 'ios';
-    } else if (/Macintosh|Mac OS X/i.test(userAgent)) {
-      device_os = 'macos';
-    } else if (/Windows NT/i.test(userAgent)) {
-      device_os = 'windows';
-    } else if (/Linux/i.test(userAgent) && !/Android/i.test(userAgent)) {
-      device_os = 'linux';
+    let backendUrl = currentScript.getAttribute('data-url');
+    const clientId = currentScript.getAttribute('data-id');
+
+    if (!backendUrl) backendUrl = 'https://api.barelytics.com/event';
+
+    if (!clientId) {
+        console.error('Barelytics: data-id attribute is required');
+        return;
     }
 
-    // Browser Detection
-    let device_browser = 'unknown';
-    if (/Chrome/i.test(userAgent) && !/Edge/i.test(userAgent)) {
-      device_browser = 'chrome';
-    } else if (/Firefox/i.test(userAgent)) {
-      device_browser = 'firefox';
-    } else if (/Safari/i.test(userAgent) && !/Chrome/i.test(userAgent)) {
-      device_browser = 'safari';
-    } else if (/Edge/i.test(userAgent)) {
-      device_browser = 'edge';
-    } else if (/Opera|OPR/i.test(userAgent)) {
-      device_browser = 'opera';
+    // --- Session + User tracking ---
+    function getSessionId() {
+        const name = 'analytics_session=';
+        const match = document.cookie.split('; ').find((row) => row.startsWith(name));
+        if (match) return match.split('=')[1];
+
+        // New session, we need to take a snapshot
+        window.sessionChanged = true;
+
+        const id = crypto.randomUUID();
+        document.cookie = `analytics_session=${id}; path=/; max-age=1800`;
+        return id;
     }
 
-    return {
-      device_type: deviceType,
-      device_os,
-      device_browser,
+    function getUserId() {
+        let userId = localStorage.getItem('barelytics_user_id');
+        if (!userId) {
+            userId = crypto.randomUUID();
+            localStorage.setItem('barelytics_user_id', userId);
+        }
+        return userId;
+    }
+
+    const sessionId = getSessionId();
+    const userId = getUserId();
+
+    // --- rrweb recording ---
+    let replayEvents = [];
+
+    function startRecording() {
+        if (!window.rrweb) {
+            console.error('❌ rrweb not loaded. Did you include the rrweb script?');
+            return;
+        }
+
+        window.rrweb.record({
+            emit(event) {
+                console.log('rrweb event:', event.type);
+                replayEvents.push(event);
+            },
+            recordCrossOriginIframes: true,
+            recordShadowDom: true,
+        });
+
+        if (window.sessionChanged) {
+            console.log('🆕 New session detected, taking full snapshot');
+            window.rrweb.record.takeFullSnapshot();
+        }
+
+        console.log('✅ rrweb recording started');
+    }
+
+    if (document.readyState === 'complete') {
+        startRecording();
+    } else {
+        window.addEventListener('load', startRecording);
+    }
+
+    // --- Send analytics events to /event ---
+    function sendEvent(type, extra = {}) {
+        const payload = {
+            session_id: sessionId,
+            user_id: userId,
+            clientId: clientId,
+            type,
+            url: window.location.href,
+            referrer: document.referrer,
+            user_agent: navigator.userAgent,
+            timestamp: new Date().toISOString(),
+            ...extra,
+        };
+        navigator.sendBeacon(backendUrl, JSON.stringify(payload));
+    }
+
+    // --- Send replay batches to /replays ---
+    function flushReplays() {
+        if (replayEvents.length === 0) return;
+
+        const events = replayEvents.splice(0);
+        const sessionUrl = backendUrl.replace('/event', '/replays');
+
+        const payload = {
+            sessionId,
+            clientId,
+            events,
+            timestamp: new Date().toISOString(),
+        };
+
+        console.log('Payload size:', new Blob([JSON.stringify(payload)]).size / 1024, 'KB');
+
+        fetch(sessionUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+            .then(() => {
+                console.log('📤 Sent replay batch with fetch:', events.length, 'events');
+            })
+            .catch((err) => {
+                console.error('❌ Failed to send replay batch:', err);
+            });
+
+        //localStorage.setItem('rrweb-events', JSON.stringify(events));
+    }
+
+    setInterval(flushReplays, 10000);
+
+    // --- Page views + navigation tracking ---
+    function sendPageView() {
+        sendEvent('page_view');
+    }
+
+    sendPageView();
+
+    window.addEventListener('popstate', sendPageView);
+
+    const origPushState = history.pushState;
+    const origReplaceState = history.replaceState;
+
+    history.pushState = function (...args) {
+        origPushState.apply(this, args);
+        setTimeout(sendPageView, 0);
     };
-  }
 
-  const sessionId = getSessionId();
-  const deviceInfo = detectDevice();
-
-  function sendEvent(type, name) {
-    const payload = {
-      session_id: sessionId,
-      type,
-      name,
-      url: window.location.href,
-      referrer: document.referrer,
-      user_agent: navigator.userAgent,
-      timestamp: new Date().toISOString(),
-      user_id: getUserId(),
-      client_id: clientId,
-      ...deviceInfo,
+    history.replaceState = function (...args) {
+        origReplaceState.apply(this, args);
+        setTimeout(sendPageView, 0);
     };
-    navigator.sendBeacon(backendUrl, JSON.stringify(payload));
-  }
 
-  // initial page view
-  sendEvent('page_view');
-
-  // track route changes (Next.js router)
-  window.addEventListener('popstate', () => sendEvent('page_view'));
-
-  const originalPushState = history.pushState;
-  const originalReplaceState = history.replaceState;
-
-  history.pushState = function (...args) {
-    originalPushState.apply(this, args);
-    setTimeout(() => sendEvent('page_view'), 0);
-  };
-
-  history.replaceState = function (...args) {
-    originalReplaceState.apply(this, args);
-    setTimeout(() => sendEvent('page_view'), 0);
-  };
-
-  // Expose public API
-  window.barelytics = {
-    capture: function (name) {
-      sendEvent('custom', name);
-    },
-  };
+    // --- Public API ---
+    window.barelytics = {
+        capture(name) {
+            sendEvent('custom', { name });
+        },
+        flushReplays, // manual trigger if you want
+    };
 })();
