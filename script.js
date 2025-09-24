@@ -95,9 +95,6 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             })
-                .then(() => {
-                    console.log('📤 Sent replay batch with fetch:', events.length, 'events');
-                })
                 .catch((err) => {
                     console.error('❌ Failed to send replay batch:', err);
                 });
