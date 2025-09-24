@@ -11,7 +11,7 @@
     let backendUrl = currentScript.getAttribute('data-url');
     const clientId = currentScript.getAttribute('data-id');
 
-    if (!backendUrl) backendUrl = 'https://api.barelytics.com/event';
+    if (!backendUrl) backendUrl = 'https://api.barelytics.com/i';
 
     if (!clientId) {
         console.error('Barelytics: data-id attribute is required');
@@ -74,9 +74,8 @@
         startRecording();
     } else {
         window.addEventListener('load', startRecording);
-    }
-
-    // --- Send analytics events to /event ---
+    } 
+ 
     function sendEvent(type, extra = {}) {
         const payload = {
             session_id: sessionId,
@@ -89,38 +88,30 @@
             timestamp: new Date().toISOString(),
             ...extra,
         };
-        navigator.sendBeacon(backendUrl, JSON.stringify(payload));
+
+        if (type === 'replay') {
+            fetch(backendUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            })
+                .then(() => {
+                    console.log('📤 Sent replay batch with fetch:', events.length, 'events');
+                })
+                .catch((err) => {
+                    console.error('❌ Failed to send replay batch:', err);
+                });
+        }
+        else {
+            navigator.sendBeacon(backendUrl, JSON.stringify(payload));
+        }
     }
 
-    // --- Send replay batches to /replays ---
     function flushReplays() {
         if (replayEvents.length === 0) return;
-
         const events = replayEvents.splice(0);
-        const sessionUrl = backendUrl.replace('/event', '/replays');
-
-        const payload = {
-            sessionId,
-            clientId,
-            events,
-            timestamp: new Date().toISOString(),
-        };
-
-        console.log('Payload size:', new Blob([JSON.stringify(payload)]).size / 1024, 'KB');
-
-        fetch(sessionUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        })
-            .then(() => {
-                console.log('📤 Sent replay batch with fetch:', events.length, 'events');
-            })
-            .catch((err) => {
-                console.error('❌ Failed to send replay batch:', err);
-            });
-
-        //localStorage.setItem('rrweb-events', JSON.stringify(events));
+        console.log('Events size:', new Blob([JSON.stringify(events)]).size / 1024, 'KB');
+        sendEvent('replay', {events: events});
     }
 
     setInterval(flushReplays, 10000);
@@ -131,21 +122,6 @@
     }
 
     sendPageView();
-
-    window.addEventListener('popstate', sendPageView);
-
-    const origPushState = history.pushState;
-    const origReplaceState = history.replaceState;
-
-    history.pushState = function (...args) {
-        origPushState.apply(this, args);
-        setTimeout(sendPageView, 0);
-    };
-
-    history.replaceState = function (...args) {
-        origReplaceState.apply(this, args);
-        setTimeout(sendPageView, 0);
-    };
 
     // --- Public API ---
     window.barelytics = {
