@@ -1,9 +1,11 @@
 {
   "name": "barelytics",
   "scripts": {
-    "build": "mkdir -p dist && cp script.js dist/script.js && terser script.js -c drop_console=true,drop_debugger=true -m -o dist/script.min.js"
+    "build": "mkdir -p dist && cp script.js dist/script.js && terser script.js -c drop_console=true,drop_debugger=true -m -o dist/script.min.js",
+    "dev": "cp script.js ../barelytics.web-app/public/script.js && chokidar script.js -c 'cp script.js ../barelytics.web-app/public/script.js'"
   },
   "devDependencies": {
-    "terser": "^5.44.0"
+    "terser": "^5.44.0",
+    "chokidar-cli": "^3.0.0"
   }
 }
