@@ -11,3 +11,9 @@ The script assumes `barelytics.web-app` and `barelytics.js` are in the same pare
 npm install
 npm run dev
 ```
+
+### To do
+
+- SPA navigation tracking
+- Reduce bundle size
+- Add tests

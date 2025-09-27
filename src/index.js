@@ -1,13 +1,14 @@
-// TODO: Fix spa navigation not being tracked
+import {record} from '@rrweb/record';
+import * as fflate from "fflate";
 
 (function initAnalytics() {
     const currentScript = document.currentScript || document.querySelector('script[data-url]');
 
     if (!currentScript) {
         console.error('Barelytics: Could not find script tag with data-url');
-        return;
+        return; 
     }
-
+    
     let backendUrl = currentScript.getAttribute('data-url');
     const clientId = currentScript.getAttribute('data-id');
 
@@ -17,16 +18,16 @@
         console.error('Barelytics: data-id attribute is required');
         return;
     }
-
+   
     // --- Session + User tracking ---
-    function getSessionId() {
+    function getSessionId() { 
         const name = 'analytics_session=';
         const match = document.cookie.split('; ').find((row) => row.startsWith(name));
         if (match) return match.split('=')[1];
 
         // New session, we need to take a snapshot
         window.sessionChanged = true;
-
+ 
         const id = crypto.randomUUID();
         document.cookie = `analytics_session=${id}; path=/; max-age=1800`;
         return id;
@@ -46,36 +47,28 @@
 
     // --- rrweb recording ---
     let replayEvents = [];
+    let recordStopFn = null;
 
     function startRecording() {
-        if (!window.rrweb) {
-            console.error('❌ rrweb not loaded. Did you include the rrweb script?');
-            return;
-        }
-
-        window.rrweb.record({
+        recordStopFn = record({ 
             emit(event) {
-                console.log('rrweb event:', event.type);
                 replayEvents.push(event);
             },
-            recordCrossOriginIframes: true,
-            recordShadowDom: true,
         });
 
         if (window.sessionChanged) {
-            console.log('🆕 New session detected, taking full snapshot');
-            window.rrweb.record.takeFullSnapshot();
+            record.takeFullSnapshot();
         }
 
-        console.log('✅ rrweb recording started');
+        return recordStopFn;
     }
 
     if (document.readyState === 'complete') {
         startRecording();
     } else {
         window.addEventListener('load', startRecording);
-    } 
- 
+    }
+
     function sendEvent(type, extra = {}) {
         const payload = {
             session_id: sessionId,
@@ -88,30 +81,28 @@
             timestamp: new Date().toISOString(),
             ...extra,
         };
+        const compressed = fflate.gzipSync(new TextEncoder().encode(JSON.stringify(payload)));
+
 
         if (type === 'replay') {
             fetch(backendUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
+                body: compressed,
             })
-                .catch((err) => {
-                    console.error('❌ Failed to send replay batch:', err);
-                });
         }
         else {
-            navigator.sendBeacon(backendUrl, JSON.stringify(payload));
+            navigator.sendBeacon(backendUrl, compressed);
         }
     }
 
     function flushReplays() {
         if (replayEvents.length === 0) return;
         const events = replayEvents.splice(0);
-        console.log('Events size:', new Blob([JSON.stringify(events)]).size / 1024, 'KB');
         sendEvent('replay', {events: events});
     }
 
-    setInterval(flushReplays, 10000);
+    setInterval(flushReplays, 5000); // every 5 seconds
 
     // --- Page views + navigation tracking ---
     function sendPageView() {
