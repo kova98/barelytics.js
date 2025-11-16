@@ -33,17 +33,17 @@ import * as fflate from "fflate";
         return id;
     }
 
-    function getUserId() {
-        let userId = localStorage.getItem('barelytics_user_id');
-        if (!userId) {
-            userId = crypto.randomUUID();
-            localStorage.setItem('barelytics_user_id', userId);
+    function getDistinctId() {
+        let distinctId = localStorage.getItem('barelytics_id');
+        if (!distinctId) {
+            distinctId = crypto.randomUUID();
+            localStorage.setItem('barelytics_id', distinctId);
         }
-        return userId;
+        return distinctId;
     }
 
     const sessionId = getSessionId();
-    const userId = getUserId();
+    const distinctId = getDistinctId();
 
     // --- rrweb recording ---
     let replayEvents = [];
@@ -72,7 +72,7 @@ import * as fflate from "fflate";
     function sendEvent(type, extra = {}) {
         const payload = {
             sessionId: sessionId,
-            userId: userId,
+            distinctId: distinctId, 
             clientId: clientId,
             type,
             url: window.location.href,
