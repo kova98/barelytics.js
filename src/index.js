@@ -71,13 +71,13 @@ import * as fflate from "fflate";
 
     function sendEvent(type, extra = {}) {
         const payload = {
-            session_id: sessionId,
-            user_id: userId,
+            sessionId: sessionId,
+            userId: userId,
             clientId: clientId,
             type,
             url: window.location.href,
             referrer: document.referrer,
-            user_agent: navigator.userAgent,
+            userAgent: navigator.userAgent,
             timestamp: new Date().toISOString(),
             ...extra,
         };
