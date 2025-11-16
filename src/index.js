@@ -72,7 +72,7 @@ import * as fflate from "fflate";
     function sendEvent(type, extra = {}) {
         const payload = {
             sessionId: sessionId,
-            distinctId: distinctId, 
+            distinctId: distinctId,
             clientId: clientId,
             type,
             url: window.location.href,
