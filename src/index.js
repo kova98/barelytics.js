@@ -12,7 +12,7 @@ import * as fflate from "fflate";
     let backendUrl = currentScript.getAttribute('data-url');
     const clientId = currentScript.getAttribute('data-id');
 
-    if (!backendUrl) backendUrl = 'https://api.barelytics.com/i';
+    if (!backendUrl) backendUrl = 'https://api.barelytics.io/i';
 
     if (!clientId) {
         console.error('Barelytics: data-id attribute is required');
@@ -51,6 +51,9 @@ import * as fflate from "fflate";
 
     function startRecording() {
         recordStopFn = record({ 
+            maskAllInputs: true,
+            recordCanvas: false,
+            recordCrossOriginIframes: false,
             emit(event) {
                 replayEvents.push(event);
             },
