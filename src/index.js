@@ -11,6 +11,21 @@ import * as fflate from "fflate";
     
     let backendUrl = currentScript.getAttribute('data-url');
     const clientId = currentScript.getAttribute('data-id');
+    const disableLocalhost = currentScript.getAttribute('data-disable-localhost') === 'true';
+
+    function isLocalhost() {
+        const hostname = window.location.hostname;
+        return hostname === 'localhost' ||
+               hostname === '127.0.0.1' ||
+               hostname === '[::1]' ||
+               hostname.startsWith('192.168.') ||
+               hostname.startsWith('10.') ||
+               hostname.endsWith('.local');
+    }
+
+    if (disableLocalhost && isLocalhost()) {
+        return;
+    }
 
     if (!backendUrl) backendUrl = 'https://api.barelytics.io/i';
 
@@ -20,25 +35,47 @@ import * as fflate from "fflate";
     }
    
     // --- Session + User tracking ---
-    function getSessionId() { 
-        const name = 'analytics_session=';
+    // Extract root domain for cross-subdomain cookies (e.g., ".barelytics.io")
+    function getRootDomain() {
+        const hostname = window.location.hostname;
+        const parts = hostname.split('.');
+        if (parts.length >= 2) {
+            return '.' + parts.slice(-2).join('.');
+        }
+        return hostname; // fallback for localhost
+    }
+
+    const rootDomain = getRootDomain();
+
+    function getSessionId() {
+        const name = 'barelytics_sess=';
         const match = document.cookie.split('; ').find((row) => row.startsWith(name));
         if (match) return match.split('=')[1];
 
         // New session, we need to take a snapshot
         window.sessionChanged = true;
- 
+
         const id = crypto.randomUUID();
-        document.cookie = `analytics_session=${id}; path=/; max-age=1800`;
+        document.cookie = `barelytics_sess=${id}; path=/; max-age=1800; domain=${rootDomain}`;
         return id;
     }
 
     function getDistinctId() {
+        // Try cookie first (works across subdomains)
+        const name = 'barelytics_id=';
+        const match = document.cookie.split('; ').find((row) => row.startsWith(name));
+        if (match) return match.split('=')[1];
+
+        // Fallback to localStorage for backwards compatibility
         let distinctId = localStorage.getItem('barelytics_id');
         if (!distinctId) {
             distinctId = crypto.randomUUID();
-            localStorage.setItem('barelytics_id', distinctId);
         }
+
+        // Store in both cookie (for cross-subdomain) and localStorage (as backup)
+        document.cookie = `barelytics_id=${distinctId}; path=/; max-age=31536000; domain=${rootDomain}`; // 1 year
+        localStorage.setItem('barelytics_id', distinctId);
+
         return distinctId;
     }
 
